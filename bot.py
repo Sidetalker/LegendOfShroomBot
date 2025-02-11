@@ -49,19 +49,33 @@ def get_display_name(author: discord.Member | discord.User) -> str:
 
 async def generate_response(channel_id: int, new_message: dict) -> str:
     """Generate a response from DeepSeek using conversation history"""
+    print(f"\n=== Generating response for channel {channel_id} ===")
+    print(f"New message from {new_message.get('name')}: {new_message.get('content')[:50]}...")
+    
     # Ensure channel history exists and has system message
     if not conversation_history[channel_id]:
+        print("Initializing channel history with system message")
         init_channel_history(channel_id)
     elif conversation_history[channel_id][0] != SYSTEM_MESSAGE:
+        print("Reinserting system message at start")
         conversation_history[channel_id].insert(0, SYSTEM_MESSAGE)
     
     # Get channel history and add new message
     history = conversation_history[channel_id]
     
-    # Keep system message plus last N messages
-    messages = [history[0]]  # System message
-    messages.extend(history[1:MAX_HISTORY])  # Last N-1 messages (excluding system message)
-    messages.append(new_message)
+    # Keep system message plus last N messages in chronological order
+    messages = [
+        history[0],  # System message
+        *history[max(1, len(history) - MAX_HISTORY + 1):],  # Last N-1 messages
+        new_message  # Current message
+    ]
+    
+    print("\nMessage sequence being sent to API:")
+    for idx, msg in enumerate(messages):
+        role = msg.get('role', 'unknown')
+        name = msg.get('name', 'system')
+        content_preview = msg.get('content', '')[:50] + "..."
+        print(f"{idx}. [{role}] {name}: {content_preview}")
     
     # Call DeepSeek API
     response = await ai_client.chat.completions.create(
@@ -69,10 +83,12 @@ async def generate_response(channel_id: int, new_message: dict) -> str:
         messages=messages,
         max_tokens=1000,
         temperature=0.7,
-        user=new_message.get('name')  # Add user identifier to help with context
+        user=new_message.get('name')
     )
     
-    return response.choices[0].message.content
+    response_text = response.choices[0].message.content
+    print(f"\nAPI Response: {response_text[:50]}...")
+    return response_text
 
 def replace_mentions(response_text: str, author: discord.Member | discord.User) -> str:
     """Replace [name] placeholders with proper Discord mentions"""
