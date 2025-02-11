@@ -150,14 +150,6 @@ async def on_message(message):
         "name": get_display_name(message.author),
         "content": message.content
     }
-    conversation_history[message.channel.id].append(new_message)
-    
-    # Trim history if needed (keeping system message)
-    if len(conversation_history[message.channel.id]) > MAX_HISTORY + 1:  # +1 for system message
-        conversation_history[message.channel.id] = [
-            conversation_history[message.channel.id][0],  # Keep system message
-            *conversation_history[message.channel.id][-(MAX_HISTORY-1):]  # Keep last N-1 messages
-        ]
     
     # If bot is mentioned or message is in DM, generate and send response
     if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
@@ -168,11 +160,19 @@ async def on_message(message):
                 # Replace [name] with proper mention
                 response_text = replace_mentions(response_text, message.author)
                 
-                # Add bot's response to history
+                # Add both messages to history after generating response
+                conversation_history[message.channel.id].append(new_message)
                 conversation_history[message.channel.id].append({
                     "role": "assistant",
                     "content": response_text
                 })
+                
+                # Trim history if it gets too long (keeping system message)
+                if len(conversation_history[message.channel.id]) > MAX_HISTORY + 1:  # +1 for system message
+                    conversation_history[message.channel.id] = [
+                        conversation_history[message.channel.id][0],  # Keep system message
+                        *conversation_history[message.channel.id][-(MAX_HISTORY-1):]  # Keep last N-1 messages
+                    ]
                 
                 # Split and send response
                 max_length = 1900
@@ -182,6 +182,16 @@ async def on_message(message):
                     
             except Exception as e:
                 await message.channel.send(f"Sorry <@{message.author.id}>, I encountered an error: {str(e)}")
+    else:
+        # If not a bot mention/DM, just add the message to history
+        conversation_history[message.channel.id].append(new_message)
+        
+        # Trim history if it gets too long (keeping system message)
+        if len(conversation_history[message.channel.id]) > MAX_HISTORY + 1:  # +1 for system message
+            conversation_history[message.channel.id] = [
+                conversation_history[message.channel.id][0],  # Keep system message
+                *conversation_history[message.channel.id][-(MAX_HISTORY-1):]  # Keep last N-1 messages
+            ]
 
 @bot.command(name='ping')
 async def ping(ctx):
