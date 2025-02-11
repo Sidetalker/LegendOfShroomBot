@@ -101,12 +101,40 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    # Ignore messages from the bot itself
+    # Ignore messages from this bot itself
     if message.author == bot.user:
         return
         
     # Process commands first
     await bot.process_commands(message)
+    
+    # Check for YAGPDB.xyz welcome message
+    if message.author.id == 204255221017214977:  # YAGPDB.xyz's ID
+        if any(keyword in message.content.lower() for keyword in ['welcome', 'joined', 'welcomed']):
+            async with message.channel.typing():
+                # Create message dict for context
+                new_message = {
+                    "role": "user",
+                    "name": "YAGPDB.xyz",
+                    "content": f"I just welcomed a new user with this message: {message.content}"
+                }
+                
+                # Generate a snarky response about YAGPDB's welcome message
+                response_text = await generate_response(message.channel.id, new_message)
+                
+                # Add both messages to history
+                if not conversation_history[message.channel.id]:
+                    init_channel_history(message.channel.id)
+                conversation_history[message.channel.id].append(new_message)
+                conversation_history[message.channel.id].append({
+                    "role": "assistant",
+                    "content": response_text
+                })
+                
+                # Send the response after a short delay for dramatic effect
+                await asyncio.sleep(1)
+                await message.channel.send(response_text)
+            return
     
     # If message starts with prefix, don't process it as conversation
     if message.content.startswith(bot.command_prefix):
