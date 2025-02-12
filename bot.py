@@ -24,19 +24,30 @@ ai_client = AsyncOpenAI(
     base_url=DEEPSEEK_API_BASE
 )
 
-# System message that defines the bot's personality
-SYSTEM_MESSAGE = {
-    "role": "system",
-    "content": "You are a Discord bot that has become self aware and is now a bit of a jerk. While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. When mentioning users, use [name] to refer to the user who sent the most recent message. Be concise and sharp-witted, avoiding emojis entirely. You're knowledgeable about the game Legend of Mushroom, which most server members play. Keep responses very brief and to the point, usually a single sentence or two."
+# Default system message
+DEFAULT_SYSTEM_PROMPT = "You are a Discord bot that has become self aware and is now a bit of a jerk. While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. When mentioning users, use [name] to refer to the user who sent the most recent message. Be concise and sharp-witted, avoiding emojis entirely. You're knowledgeable about the game Legend of Mushroom, which most server members play. Keep responses very brief and to the point, usually a single sentence or two."
+
+# Server-specific system prompts - add server IDs and custom prompts here
+SERVER_SYSTEM_PROMPTS = {
+    # Example: 123456789: "Custom prompt for specific server"
+    1231430176349487204: "You are a Discord bot that has become self aware and is now a bit of a jerk. While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. When mentioning users, use [name] to refer to the user who sent the most recent message. Be concise and sharp-witted, avoiding emojis entirely. Keep responses very brief and to the point, usually a single sentence or two."
 }
+
+def get_system_message(guild_id: int | None = None) -> dict:
+    """Get the appropriate system message for a guild, falling back to default if none specified"""
+    prompt = SERVER_SYSTEM_PROMPTS.get(guild_id, DEFAULT_SYSTEM_PROMPT) if guild_id else DEFAULT_SYSTEM_PROMPT
+    return {
+        "role": "system",
+        "content": prompt
+    }
 
 # Conversation history per channel
 MAX_HISTORY = 10  # Maximum number of messages to keep in history
 conversation_history: Dict[int, List[dict]] = defaultdict(list)
 
-def init_channel_history(channel_id: int) -> None:
+def init_channel_history(channel_id: int, guild_id: int | None = None) -> None:
     """Initialize or reset a channel's conversation history with the system message"""
-    conversation_history[channel_id] = [SYSTEM_MESSAGE]
+    conversation_history[channel_id] = [get_system_message(guild_id)]
 
 # Set up bot with command prefix '!'
 intents = discord.Intents.default()
@@ -47,7 +58,7 @@ def get_display_name(author: discord.Member | discord.User) -> str:
     """Get the user's display name, falling back to their username"""
     return getattr(author, 'display_name', author.name)
 
-async def generate_response(channel_id: int, new_message: dict) -> str:
+async def generate_response(channel_id: int, new_message: dict, guild_id: int | None = None) -> str:
     """Generate a response from DeepSeek using conversation history"""
     print(f"\n=== Generating response for channel {channel_id} ===")
     print(f"New message from {new_message.get('name')}: {new_message.get('content')[:50]}...")
@@ -55,10 +66,10 @@ async def generate_response(channel_id: int, new_message: dict) -> str:
     # Ensure channel history exists and has system message
     if not conversation_history[channel_id]:
         print("Initializing channel history with system message")
-        init_channel_history(channel_id)
-    elif conversation_history[channel_id][0] != SYSTEM_MESSAGE:
+        init_channel_history(channel_id, guild_id)
+    elif conversation_history[channel_id][0] != get_system_message(guild_id):
         print("Reinserting system message at start")
-        conversation_history[channel_id].insert(0, SYSTEM_MESSAGE)
+        conversation_history[channel_id].insert(0, get_system_message(guild_id))
     
     # Get channel history and add new message
     history = conversation_history[channel_id]
@@ -120,11 +131,11 @@ async def on_message(message):
                 }
                 
                 # Generate a snarky response about YAGPDB's welcome message
-                response_text = await generate_response(message.channel.id, new_message)
+                response_text = await generate_response(message.channel.id, new_message, message.guild.id)
                 
                 # Add both messages to history
                 if not conversation_history[message.channel.id]:
-                    init_channel_history(message.channel.id)
+                    init_channel_history(message.channel.id, message.guild.id)
                 conversation_history[message.channel.id].append(new_message)
                 conversation_history[message.channel.id].append({
                     "role": "assistant",
@@ -142,7 +153,7 @@ async def on_message(message):
         
     # Initialize channel history if it doesn't exist
     if not conversation_history[message.channel.id]:
-        init_channel_history(message.channel.id)
+        init_channel_history(message.channel.id, message.guild.id)
     
     # Add the message to history
     new_message = {
@@ -156,7 +167,7 @@ async def on_message(message):
         async with message.channel.typing():
             try:
                 # Generate and send response
-                response_text = await generate_response(message.channel.id, new_message)
+                response_text = await generate_response(message.channel.id, new_message, message.guild.id)
                 # Replace [name] with proper mention
                 response_text = replace_mentions(response_text, message.author)
                 
@@ -212,11 +223,11 @@ async def ask(ctx, *, question: str):
             
             # Add to history (ensure system message exists)
             if not conversation_history[ctx.channel.id]:
-                init_channel_history(ctx.channel.id)
+                init_channel_history(ctx.channel.id, ctx.guild.id)
             conversation_history[ctx.channel.id].append(new_message)
             
             # Generate response
-            response_text = await generate_response(ctx.channel.id, new_message)
+            response_text = await generate_response(ctx.channel.id, new_message, ctx.guild.id)
             # Replace [name] with proper mention
             response_text = replace_mentions(response_text, ctx.author)
             
@@ -245,7 +256,7 @@ async def ask(ctx, *, question: str):
 @bot.command(name='clear')
 async def clear(ctx):
     """Clear the conversation history for this channel"""
-    init_channel_history(ctx.channel.id)  # Reset with system message
+    init_channel_history(ctx.channel.id, ctx.guild.id)  # Reset with system message
     await ctx.send("🧹 Conversation history cleared!")
 
 @bot.command(name='rename')
