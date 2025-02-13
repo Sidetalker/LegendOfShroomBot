@@ -133,20 +133,44 @@ class VoiceHandler:
         if not os.path.exists(model_path):
             logger.error(f"Model directory not found at {model_path}")
             raise RuntimeError("Please download the Vosk model and place it in a 'model' directory")
+        
+        # Check model directory contents
+        model_files = os.listdir(model_path)
+        logger.info(f"Model directory contents: {model_files}")
+        
+        required_files = ['final.mdl', 'conf', 'ivector', 'graph']
+        missing_files = [f for f in required_files if f not in model_files]
+        if missing_files:
+            logger.error(f"Missing required model files: {missing_files}")
+            raise RuntimeError(f"Model directory is missing required files: {missing_files}")
+
         logger.info(f"Loading Vosk model from {model_path}")
         try:
             self.model = Model(model_path)
             logger.info("Vosk model loaded successfully")
             
-            # Test recognizer creation
+            # Test recognizer creation with explicit settings
+            logger.info("Creating test recognizer with sample rate 16000")
             test_recognizer = KaldiRecognizer(self.model, 16000)
             test_recognizer.SetWords(True)  # Enable word timing
             test_recognizer.SetPartialWords(True)  # Enable partial results
             logger.info("Successfully tested recognizer creation")
             del test_recognizer
         except Exception as e:
-            logger.error(f"Failed to load Vosk model: {e}")
+            logger.error(f"Failed to load Vosk model: {str(e)}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
+            # Check model configuration
+            conf_path = os.path.join(model_path, 'conf')
+            if os.path.exists(conf_path):
+                try:
+                    conf_files = os.listdir(conf_path)
+                    logger.info(f"Model conf directory contents: {conf_files}")
+                    mfcc_conf_path = os.path.join(conf_path, 'mfcc.conf')
+                    if os.path.exists(mfcc_conf_path):
+                        with open(mfcc_conf_path, 'r') as f:
+                            logger.info(f"MFCC configuration:\n{f.read()}")
+                except Exception as conf_e:
+                    logger.error(f"Error reading model configuration: {str(conf_e)}")
             raise
         
     async def join_voice_channel(self, voice_channel: discord.VoiceChannel) -> bool:
