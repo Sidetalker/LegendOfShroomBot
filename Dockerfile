@@ -1,9 +1,13 @@
 # Use Node.js 16 as base image
 FROM node:16-slim
 
-# Install only ffmpeg which is required for voice functionality
+# Install required system dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    python3 \
+    make \
+    g++ \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
