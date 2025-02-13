@@ -84,12 +84,11 @@ async def generate_response(id: int, new_message: dict, guild_id: Optional[int] 
         logger.error("Error generating response: %s", e)
         raise
 
-async def handle_voice_message(guild_id: int, text: str) -> None:
+async def handle_voice_message(guild_id: int, text: str, user_id: str = "unknown_user") -> None:
     """Handle a voice message and generate a response"""
-    logger.info("Handling voice message in guild %d: %s", guild_id, text)
+    logger.info(f"Handling voice message in guild {guild_id} from user {user_id}: {text}")
     
     # Format the message
-    user_id = "voice_user"  # You might want to track the actual speaking user
     message = conversation_handler.format_user_message(user_id, text)
     
     try:

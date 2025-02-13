@@ -106,6 +106,23 @@ class VoiceHandler:
         self.is_listening: Dict[int, bool] = {}  # guild_id -> listening_status
         self.callback: Optional[Callable] = None
         self.streams: Dict[int, sd.InputStream] = {}  # guild_id -> audio stream
+        self.speaking_users: Dict[int, discord.Member] = {}  # guild_id -> current speaking user
+        self.is_speaking: Dict[int, bool] = {}  # guild_id -> bot speaking status
+        
+        # Set up voice state update event
+        @bot.event
+        async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+            guild_id = member.guild.id
+            if guild_id in self.voice_clients:
+                # Check if the user started or stopped speaking
+                if before.self_deaf == after.self_deaf and before.self_mute == after.self_mute:
+                    if after.self_stream:  # User is speaking
+                        logger.debug(f"User {member.name} started speaking")
+                        self.speaking_users[guild_id] = member
+                    else:  # User stopped speaking
+                        logger.debug(f"User {member.name} stopped speaking")
+                        if guild_id in self.speaking_users and self.speaking_users[guild_id] == member:
+                            self.speaking_users[guild_id] = None
         
         # Load Opus
         if not _load_opus():
@@ -148,6 +165,21 @@ class VoiceHandler:
 
             voice_client = await voice_channel.connect()
             self.voice_clients[voice_channel.guild.id] = voice_client
+            
+            # Set up speaking event handler
+            def on_speaking_update(user: discord.User, speaking: bool):
+                guild_id = voice_channel.guild.id
+                member = voice_channel.guild.get_member(user.id)
+                if member:
+                    if speaking:
+                        logger.debug(f"User {member.name} started speaking")
+                        self.speaking_users[guild_id] = member
+                    else:
+                        logger.debug(f"User {member.name} stopped speaking")
+                        if guild_id in self.speaking_users and self.speaking_users[guild_id].id == member.id:
+                            self.speaking_users[guild_id] = None
+
+            voice_client.on_speaking = on_speaking_update
             
             # Initialize recognizer with proper settings
             try:
@@ -194,53 +226,10 @@ class VoiceHandler:
         logger.debug(f"Current callback state - Type: {type(callback)}, ID: {id(callback)}")
         self.callback = callback
         self.is_listening[guild_id] = True
+        self.is_speaking[guild_id] = False  # Initialize speaking flag
         
         voice_client = self.voice_clients[guild_id]
         recognizer = self.recognizers[guild_id]
-        
-        def audio_callback(indata, frames, time, status):
-            """Callback for processing audio data"""
-            try:
-                if status:
-                    logger.warning(f"Audio callback status: {status}")
-                    return
-                    
-                # Ensure audio data is in the correct format (16-bit PCM)
-                audio_data = (indata * 32767).astype(np.int16)
-                audio_bytes = audio_data.tobytes()
-                
-                if recognizer.AcceptWaveform(audio_bytes):
-                    result = json.loads(recognizer.Result())
-                    logger.debug(f"Full Vosk result: {result}")
-                    
-                    if result.get("text"):
-                        text = result["text"].lower()
-                        logger.info(f"Recognized text: {text}")
-                        
-                        if "bot" in text:
-                            logger.info("Keyword 'bot' detected, preparing to trigger callback")
-                            logger.debug(f"Callback details - Function: {self.callback.__name__ if hasattr(self.callback, '__name__') else type(self.callback)}")
-                            logger.debug(f"Bot loop state - Running: {self.bot.loop.is_running()}, Closed: {self.bot.loop.is_closed()}")
-                            
-                            try:
-                                future = asyncio.run_coroutine_threadsafe(
-                                    self.callback(guild_id, text),
-                                    self.bot.loop
-                                )
-                                logger.debug("Callback scheduled successfully")
-                                future.add_done_callback(self._handle_callback_result)
-                            except Exception as e:
-                                logger.error(f"Failed to schedule callback: {e}")
-                                logger.error(f"Stack trace: {traceback.format_exc()}")
-                else:
-                    # Process partial results
-                    partial = json.loads(recognizer.PartialResult())
-                    if partial.get("partial"):
-                        logger.debug(f"Partial result: {partial['partial']}")
-            
-            except Exception as e:
-                logger.error(f"Error in audio callback: {e}")
-                logger.error(f"Stack trace: {traceback.format_exc()}")
         
         try:
             # Start audio stream with correct settings for Vosk
@@ -248,7 +237,7 @@ class VoiceHandler:
             stream = sd.InputStream(
                 channels=1,
                 samplerate=16000,
-                callback=audio_callback,
+                callback=self.audio_callback,  # Use the class method
                 dtype=np.float32,  # Use float32 for better audio quality
                 blocksize=8000,  # Process in smaller chunks
                 device=None,  # Use default input device
@@ -265,6 +254,63 @@ class VoiceHandler:
             logger.error(f"Error starting audio stream: {e}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
             
+    def audio_callback(self, indata, frames, time, status):
+        """Callback for processing audio data"""
+        try:
+            if status:
+                logger.warning(f"Audio callback status: {status}")
+                return
+                
+            # Skip processing if bot is speaking
+            guild_id = next((gid for gid, stream in self.streams.items() if stream), None)
+            if guild_id is None or self.is_speaking.get(guild_id, False):
+                return
+                
+            # Ensure audio data is in the correct format (16-bit PCM)
+            audio_data = (indata * 32767).astype(np.int16)
+            audio_bytes = audio_data.tobytes()
+            
+            recognizer = self.recognizers.get(guild_id)
+            if not recognizer:
+                return
+                
+            if recognizer.AcceptWaveform(audio_bytes):
+                result = json.loads(recognizer.Result())
+                logger.debug(f"Full Vosk result: {result}")
+                
+                if result.get("text"):
+                    text = result["text"].lower()
+                    logger.info(f"Recognized text: {text}")
+                    
+                    if "bot" in text:
+                        logger.info("Keyword 'bot' detected, preparing to trigger callback")
+                        logger.debug(f"Callback details - Function: {self.callback.__name__ if hasattr(self.callback, '__name__') else type(self.callback)}")
+                        logger.debug(f"Bot loop state - Running: {self.bot.loop.is_running()}, Closed: {self.bot.loop.is_closed()}")
+                        
+                        try:
+                            # Get the current speaking user
+                            current_user = self.speaking_users.get(guild_id)
+                            user_id = str(current_user.id) if current_user else "unknown_user"
+                            
+                            future = asyncio.run_coroutine_threadsafe(
+                                self.callback(guild_id, text, user_id),
+                                self.bot.loop
+                            )
+                            logger.debug("Callback scheduled successfully")
+                            future.add_done_callback(self._handle_callback_result)
+                        except Exception as e:
+                            logger.error(f"Failed to schedule callback: {e}")
+                            logger.error(f"Stack trace: {traceback.format_exc()}")
+            else:
+                # Process partial results
+                partial = json.loads(recognizer.PartialResult())
+                if partial.get("partial"):
+                    logger.debug(f"Partial result: {partial['partial']}")
+        
+        except Exception as e:
+            logger.error(f"Error in audio callback: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+        
     def _handle_callback_result(self, future):
         """Handle the result of the callback execution"""
         try:
@@ -305,6 +351,9 @@ class VoiceHandler:
         voice_client = self.voice_clients[guild_id]
         
         try:
+            # Set speaking flag
+            self.is_speaking[guild_id] = True
+            
             # Generate speech using gTTS
             logger.info("Generating speech with gTTS")
             tts = gTTS(text=text, lang='en')
@@ -379,6 +428,9 @@ class VoiceHandler:
         except Exception as e:
             logger.error(f"Error in speak function: {str(e)}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
+        finally:
+            # Clear speaking flag
+            self.is_speaking[guild_id] = False
             
     def _handle_playback_completion(self, error, filename: str):
         """Handle cleanup after audio playback"""

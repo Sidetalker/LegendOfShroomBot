@@ -6,12 +6,12 @@ RUN apt-get update && apt-get install -y wget unzip
 # Create model directory
 WORKDIR /model
 
-# Download and extract model
-RUN wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip \
-    && unzip vosk-model-small-en-us-0.15.zip \
-    && mv vosk-model-small-en-us-0.15/* . \
-    && rmdir vosk-model-small-en-us-0.15 \
-    && rm vosk-model-small-en-us-0.15.zip
+# Download and extract model (using 0.22 model)
+RUN wget https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip \
+    && unzip vosk-model-en-us-0.22.zip \
+    && mv vosk-model-en-us-0.22/* . \
+    && rmdir vosk-model-en-us-0.22 \
+    && rm vosk-model-en-us-0.22.zip
 
 FROM python:3.11
 
