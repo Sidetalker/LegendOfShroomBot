@@ -22,7 +22,7 @@ RUN pip install -r requirements.txt
 # Create a separate layer for model download that can be cached
 RUN mkdir -p /app/model && \
     cd /app/model && \
-    if [ ! -f "final.mdl" ]; then \
+    if [ ! -d "am" ] || [ ! -f "am/final.mdl" ]; then \
         echo "Downloading model..." && \
         wget -q https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip && \
         unzip vosk-model-en-us-0.22.zip && \
@@ -30,7 +30,10 @@ RUN mkdir -p /app/model && \
         rmdir vosk-model-en-us-0.22 && \
         rm vosk-model-en-us-0.22.zip && \
         chmod -R 755 . && \
-        ls -la; \
+        echo "Model directory contents:" && \
+        ls -la && \
+        echo "AM directory contents:" && \
+        ls -la am/; \
     else \
         echo "Model already exists, skipping download"; \
     fi

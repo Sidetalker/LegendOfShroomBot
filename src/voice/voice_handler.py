@@ -138,11 +138,20 @@ class VoiceHandler:
         model_files = os.listdir(model_path)
         logger.info(f"Model directory contents: {model_files}")
         
-        required_files = ['final.mdl', 'conf', 'ivector', 'graph']
-        missing_files = [f for f in required_files if f not in model_files]
-        if missing_files:
-            logger.error(f"Missing required model files: {missing_files}")
-            raise RuntimeError(f"Model directory is missing required files: {missing_files}")
+        # Check for required files and directories
+        required_dirs = ['conf', 'ivector', 'graph', 'am']
+        missing_dirs = [d for d in required_dirs if d not in model_files]
+        if missing_dirs:
+            logger.error(f"Missing required model directories: {missing_dirs}")
+            raise RuntimeError(f"Model directory is missing required directories: {missing_dirs}")
+            
+        # Check for final.mdl in am directory
+        am_path = os.path.join(model_path, 'am')
+        am_files = os.listdir(am_path)
+        logger.info(f"AM directory contents: {am_files}")
+        if 'final.mdl' not in am_files:
+            logger.error("Missing final.mdl in am directory")
+            raise RuntimeError("Model directory is missing final.mdl in am directory")
 
         logger.info(f"Loading Vosk model from {model_path}")
         try:
