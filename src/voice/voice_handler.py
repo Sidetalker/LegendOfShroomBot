@@ -120,6 +120,13 @@ class VoiceHandler:
         try:
             self.model = Model(model_path)
             logger.info("Vosk model loaded successfully")
+            
+            # Test recognizer creation
+            test_recognizer = KaldiRecognizer(self.model, 16000)
+            test_recognizer.SetWords(True)  # Enable word timing
+            test_recognizer.SetPartialWords(True)  # Enable partial results
+            logger.info("Successfully tested recognizer creation")
+            del test_recognizer
         except Exception as e:
             logger.error(f"Failed to load Vosk model: {e}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
@@ -141,7 +148,20 @@ class VoiceHandler:
 
             voice_client = await voice_channel.connect()
             self.voice_clients[voice_channel.guild.id] = voice_client
-            self.recognizers[voice_channel.guild.id] = KaldiRecognizer(self.model, 16000)
+            
+            # Initialize recognizer with proper settings
+            try:
+                recognizer = KaldiRecognizer(self.model, 16000)
+                recognizer.SetWords(True)  # Enable word timing
+                recognizer.SetPartialWords(True)  # Enable partial results
+                self.recognizers[voice_channel.guild.id] = recognizer
+                logger.info("Successfully created recognizer for voice channel")
+            except Exception as e:
+                logger.error(f"Failed to create recognizer: {e}")
+                logger.error(f"Stack trace: {traceback.format_exc()}")
+                await voice_client.disconnect()
+                return False
+            
             self.is_listening[voice_channel.guild.id] = False
             logger.info(f"Successfully joined voice channel {voice_channel.name}")
             return True
@@ -185,7 +205,9 @@ class VoiceHandler:
                     logger.warning(f"Audio callback status: {status}")
                     return
                     
-                audio_bytes = indata.tobytes()
+                # Ensure audio data is in the correct format (16-bit PCM)
+                audio_data = (indata * 32767).astype(np.int16)
+                audio_bytes = audio_data.tobytes()
                 
                 if recognizer.AcceptWaveform(audio_bytes):
                     result = json.loads(recognizer.Result())
@@ -210,20 +232,27 @@ class VoiceHandler:
                             except Exception as e:
                                 logger.error(f"Failed to schedule callback: {e}")
                                 logger.error(f"Stack trace: {traceback.format_exc()}")
-                
+                else:
+                    # Process partial results
+                    partial = json.loads(recognizer.PartialResult())
+                    if partial.get("partial"):
+                        logger.debug(f"Partial result: {partial['partial']}")
+            
             except Exception as e:
                 logger.error(f"Error in audio callback: {e}")
                 logger.error(f"Stack trace: {traceback.format_exc()}")
         
         try:
-            # Start audio stream
+            # Start audio stream with correct settings for Vosk
             logger.info("Starting audio input stream")
             stream = sd.InputStream(
                 channels=1,
                 samplerate=16000,
                 callback=audio_callback,
-                dtype=np.int16,
-                blocksize=8000  # Process in smaller chunks
+                dtype=np.float32,  # Use float32 for better audio quality
+                blocksize=8000,  # Process in smaller chunks
+                device=None,  # Use default input device
+                latency='low'  # Use low latency for better real-time processing
             )
             
             # Store the stream reference
