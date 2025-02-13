@@ -1,5 +1,5 @@
-# Use Node.js 16 as base image
-FROM node:16-slim
+# Use Node.js 18 as base image
+FROM node:18-slim
 
 # Install required system dependencies
 RUN apt-get update && apt-get install -y \
