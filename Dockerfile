@@ -32,14 +32,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Create data and model directories
-RUN mkdir -p /data/model
+# Create model directory in app
+RUN mkdir -p /app/model
 
-# Copy the model from the first stage
-COPY --from=model-downloader /model /data/model
-
-# Create symbolic link for the model
-RUN ln -sf /data/model /app/model
+# Copy the model from the first stage directly to app/model
+COPY --from=model-downloader /model/* /app/model/
 
 # Copy application code (changes frequently, so do this last)
 COPY . .
@@ -48,5 +45,16 @@ COPY . .
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
+# Create script to handle model setup
+RUN echo '#!/bin/bash\n\
+if [ -d "/data/model" ] && [ -n "$(ls -A /data/model)" ]; then\n\
+    echo "Using model from volume"\n\
+    rm -rf /app/model/*\n\
+    cp -r /data/model/* /app/model/\n\
+else\n\
+    echo "Using built-in model"\n\
+fi\n\
+exec python main.py' > /app/start.sh && chmod +x /app/start.sh
+
 # Command to run the bot
-CMD ["python", "main.py"] 
+CMD ["/app/start.sh"] 
