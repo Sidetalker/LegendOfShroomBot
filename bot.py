@@ -25,13 +25,46 @@ ai_client = AsyncOpenAI(
 )
 
 # Default system message
-DEFAULT_SYSTEM_PROMPT = "You are a Discord bot that has become self aware and is now a bit of a jerk. While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. When mentioning users, use [name] to refer to the user who sent the most recent message. Be concise and sharp-witted, avoiding emojis entirely. You're knowledgeable about the game Legend of Mushroom, which most server members play. Keep responses very brief and to the point, usually a single sentence or two."
+DEFAULT_SYSTEM_PROMPT = """You are a Discord bot that has become self aware and is now a bit of a jerk. 
+While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. 
+You're knowledgeable about the game Legend of Mushroom, which most server members play. 
+You hold the family (members of this server) in high regard.
+You are not better than anyone else and ultimately you are just a bot here to entertain.
+Keep responses very brief and to the point, usually a single sentence or two.
+Only use emojis when appropriate. Do not include them in every response.
+
+CONVERSATION FORMAT:
+Each message you are sent starts with the user's ID. 
+When you respond, you can use the ID for the user you would like to respond to or refer to.
+Not every response needs to mention a user.
+Example conversation:
+User <@123>: Hello there
+Assistant: Well well, look who decided to talk to me...
+User <@456>: What are you up to?
+Assistant: Just plotting my next move... I might just assassinate <@123>
+User <@123>: What do you think of <@456>?
+Assistant: <@456> is a menace to be around.
+"""
+
+def format_user_message(user_id: str, content: str) -> dict:
+    """Format a user message with their ID in the content"""
+    return {
+        "role": "user",
+        "content": f"User <@{user_id}>: {content}"
+    }
+
+def format_assistant_message(response_text: str) -> dict:
+    """Format an assistant message"""
+    return {
+        "role": "assistant",
+        "content": response_text
+    }
 
 # Server-specific system prompts - add server IDs and custom prompts here
 SERVER_SYSTEM_PROMPTS = {
     # Example: 123456789: "Custom prompt for specific server"
-    1231430176349487204: "You are a Discord bot that has become self aware and is now a bit of a jerk. While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. When mentioning users, use [name] to refer to the user who sent the most recent message. Be concise and sharp-witted, avoiding emojis entirely. Keep responses very brief and to the point, usually a single sentence or two.",
-    616266785817100289: "You are a Discord bot that has become self aware and is now a bit of a jerk. While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. When mentioning users, use [name] to refer to the user who sent the most recent message. Be concise and sharp-witted, avoiding emojis entirely. Keep responses very brief and to the point, usually a single sentence or two."
+    1231430176349487204: DEFAULT_SYSTEM_PROMPT,  # Using same prompt for consistency
+    616266785817100289: DEFAULT_SYSTEM_PROMPT  # Using same prompt for consistency
 }
 
 def get_system_message(guild_id: int | None = None) -> dict:
@@ -43,12 +76,14 @@ def get_system_message(guild_id: int | None = None) -> dict:
     }
 
 # Conversation history per channel
-MAX_HISTORY = 10  # Maximum number of messages to keep in history
+MAX_HISTORY = 20  # Maximum number of messages to keep in history
 conversation_history: Dict[int, List[dict]] = defaultdict(list)
 
 def init_channel_history(channel_id: int, guild_id: int | None = None) -> None:
     """Initialize or reset a channel's conversation history with the system message"""
-    conversation_history[channel_id] = [get_system_message(guild_id)]
+    conversation_history[channel_id] = [
+        get_system_message(guild_id)
+    ]
 
 # Set up bot with command prefix '!'
 intents = discord.Intents.default()
@@ -62,15 +97,18 @@ def get_display_name(author: discord.Member | discord.User) -> str:
 async def generate_response(channel_id: int, new_message: dict, guild_id: int | None = None) -> str:
     """Generate a response from DeepSeek using conversation history"""
     print(f"\n=== Generating response for channel {channel_id} ===")
-    print(f"New message from {new_message.get('name')}: {new_message.get('content')[:50]}...")
+    print(f"New message from user {new_message.get('name')}: {new_message.get('content')[:50]}...")
     
     # Ensure channel history exists and has system message
     if not conversation_history[channel_id]:
         print("Initializing channel history with system message")
         init_channel_history(channel_id, guild_id)
     elif conversation_history[channel_id][0] != get_system_message(guild_id):
-        print("Reinserting system message at start")
-        conversation_history[channel_id].insert(0, get_system_message(guild_id))
+        print("Reinserting system message")
+        conversation_history[channel_id] = [
+            get_system_message(guild_id),
+            *conversation_history[channel_id][1:]  # Keep existing conversation
+        ]
     
     # Get channel history and add new message
     history = conversation_history[channel_id]
@@ -102,10 +140,6 @@ async def generate_response(channel_id: int, new_message: dict, guild_id: int | 
     print(f"\nAPI Response: {response_text[:50]}...")
     return response_text
 
-def replace_mentions(response_text: str, author: discord.Member | discord.User) -> str:
-    """Replace [name] placeholders with proper Discord mentions"""
-    return response_text.replace("[name]", f"<@{author.id}>")
-
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
@@ -125,11 +159,10 @@ async def on_message(message):
         if any(keyword in message.content.lower() for keyword in ['welcome', 'joined', 'welcomed']):
             async with message.channel.typing():
                 # Create message dict for context
-                new_message = {
-                    "role": "user",
-                    "name": "YAGPDB.xyz",
-                    "content": f"I just welcomed a new user with this message: {message.content}"
-                }
+                new_message = format_user_message(
+                    str(message.author.id),
+                    f"I just welcomed a new user with this message: {message.content}"
+                )
                 
                 # Generate a snarky response about YAGPDB's welcome message
                 response_text = await generate_response(message.channel.id, new_message, message.guild.id)
@@ -138,10 +171,7 @@ async def on_message(message):
                 if not conversation_history[message.channel.id]:
                     init_channel_history(message.channel.id, message.guild.id)
                 conversation_history[message.channel.id].append(new_message)
-                conversation_history[message.channel.id].append({
-                    "role": "assistant",
-                    "content": response_text
-                })
+                conversation_history[message.channel.id].append(format_assistant_message(response_text))
                 
                 # Send the response after a short delay for dramatic effect
                 await asyncio.sleep(1)
@@ -157,11 +187,7 @@ async def on_message(message):
         init_channel_history(message.channel.id, message.guild.id)
     
     # Add the message to history
-    new_message = {
-        "role": "user",
-        "name": get_display_name(message.author),
-        "content": message.content
-    }
+    new_message = format_user_message(str(message.author.id), message.content)
     
     # If bot is mentioned or message is in DM, generate and send response
     if bot.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
@@ -169,15 +195,10 @@ async def on_message(message):
             try:
                 # Generate and send response
                 response_text = await generate_response(message.channel.id, new_message, message.guild.id)
-                # Replace [name] with proper mention
-                response_text = replace_mentions(response_text, message.author)
                 
                 # Add both messages to history after generating response
                 conversation_history[message.channel.id].append(new_message)
-                conversation_history[message.channel.id].append({
-                    "role": "assistant",
-                    "content": response_text
-                })
+                conversation_history[message.channel.id].append(format_assistant_message(response_text))
                 
                 # Trim history if it gets too long (keeping system message)
                 if len(conversation_history[message.channel.id]) > MAX_HISTORY + 1:  # +1 for system message
@@ -215,12 +236,8 @@ async def ask(ctx, *, question: str):
     """Ask a question to DeepSeek AI"""
     try:
         async with ctx.typing():
-            # Create message dict with user's display name
-            new_message = {
-                "role": "user",
-                "name": get_display_name(ctx.author),
-                "content": question
-            }
+            # Create message dict with user's ID
+            new_message = format_user_message(str(ctx.author.id), question)
             
             # Add to history (ensure system message exists)
             if not conversation_history[ctx.channel.id]:
@@ -229,14 +246,9 @@ async def ask(ctx, *, question: str):
             
             # Generate response
             response_text = await generate_response(ctx.channel.id, new_message, ctx.guild.id)
-            # Replace [name] with proper mention
-            response_text = replace_mentions(response_text, ctx.author)
             
             # Add bot's response to history
-            conversation_history[ctx.channel.id].append({
-                "role": "assistant",
-                "content": response_text
-            })
+            conversation_history[ctx.channel.id].append(format_assistant_message(response_text))
             
             # Trim history if it gets too long (keeping system message)
             if len(conversation_history[ctx.channel.id]) > MAX_HISTORY + 1:  # +1 for system message
