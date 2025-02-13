@@ -33,3 +33,6 @@ pids
 .vscode/
 *.swp
 *.swo 
+/.DS_Store
+/.voice-state.json
+/LegendOfShroomBot.code-workspace
