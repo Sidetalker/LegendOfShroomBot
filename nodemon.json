@@ -1,0 +1,10 @@
+{
+    "watch": ["src"],
+    "ext": "js,json",
+    "ignore": [".voice-state.json"],
+    "events": {
+        "restart": "node -e \"process.send('cleanup')\"",
+        "crash": "node -e \"process.send('cleanup')\""
+    },
+    "delay": "1500"
+} 

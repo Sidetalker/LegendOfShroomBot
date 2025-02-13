@@ -1,42 +1,61 @@
-# Legend of Shroom Bot
+# Legend of Shroom Bot (JavaScript)
 
-A Discord bot built with discord.py.
+A Discord bot for the Legend of Mushroom server, implemented in JavaScript using Discord.js.
 
-## Setup Instructions
+## Features
 
-1. **Install Dependencies**
+- Chat interaction with AI using DeepSeek API
+- Conversation memory per channel
+- Command system with basic commands:
+  - `!ping` - Check bot latency
+  - `!clear` - Clear conversation history
+
+## Prerequisites
+
+- Node.js 16.9.0 or higher
+- npm (Node Package Manager)
+- Discord Bot Token
+- DeepSeek API Key
+
+## Setup
+
+1. Clone the repository
+2. Navigate to the project directory
+3. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   npm install
+   ```
+4. Create a `.env` file in the root directory with the following variables:
+   ```
+   DISCORD_TOKEN=your_discord_bot_token
+   DEEPSEEK_API_KEY=your_deepseek_api_key
+   DEEPSEEK_API_BASE=https://api.deepseek.com/v1
    ```
 
-2. **Configure Environment Variables**
-   - Copy the `.env` file template
-   - Replace `your_token_here` with your Discord bot token
-   - To get a token:
-     1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-     2. Create a new application
-     3. Go to the "Bot" section
-     4. Click "Add Bot"
-     5. Copy the token
+## Running the Bot
 
-3. **Run the Bot**
-   ```bash
-   python bot.py
-   ```
+For development (with auto-reload):
+```bash
+npm run dev
+```
 
-## Available Commands
-- `!ping` - Check if the bot is responsive
+For production:
+```bash
+npm start
+```
 
-## Adding the Bot to Your Server
-1. Go to the Discord Developer Portal
-2. Select your application
-3. Go to "OAuth2" → "URL Generator"
-4. Select the following scopes:
-   - `bot`
-   - `applications.commands`
-5. Select required bot permissions
-6. Copy and open the generated URL
-7. Select your server and authorize the bot
+## Usage
 
-## Development
-Feel free to add more commands in `bot.py`. The bot uses the command prefix `!`. 
+1. Invite the bot to your server using the OAuth2 URL
+2. The bot will respond when:
+   - Mentioned (@bot)
+   - Sent a direct message
+   - Using commands with the `!` prefix
+
+## Contributing
+
+Feel free to submit issues and pull requests.
+
+## License
+
+ISC 
