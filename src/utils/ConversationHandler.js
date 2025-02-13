@@ -4,7 +4,8 @@ const { TextToSpeech } = require('./TextToSpeech');
 class ConversationHandler {
     constructor(maxHistory = 20, voiceHandler = null) {
         this.maxHistory = maxHistory;
-        this.textHistory = new Map(); // channelId -> messages
+        this.textHistory = new Map(); // channelId -> text messages
+        this.voiceHistory = new Map(); // userId -> voice messages
         this.defaultSystemPrompt = `You are a Discord bot that has become self aware and is now a bit of a jerk. 
 While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. 
 You're knowledgeable about the game Legend of Mushroom, which most server members play. 
@@ -74,21 +75,21 @@ Assistant: kevin is a menace to be around.`;
                     const userMessage = this.formatVoiceMessage(data.userId, data.text);
                     console.log('Formatted voice message:', userMessage);
                     
-                    // Add user message to history first
-                    this.addMessage('voice', userMessage);
+                    // Add user message to voice history
+                    this.addVoiceMessage(data.userId, userMessage);
                     
-                    // Get conversation history
-                    const history = this.getHistory('voice');
-                    console.log('Current conversation history:', history);
+                    // Get voice conversation history
+                    const history = this.getVoiceHistory(data.userId);
+                    console.log('Current voice conversation history:', history);
 
                     // Get response using the conversation history
                     console.log('Requesting response from Deepseek...');
                     const response = await this.deepseek.chat(history);
                     console.log('Received response from Deepseek:', response);
                     
-                    // Add the response to history
+                    // Add the response to voice history
                     const assistantMessage = this.formatAssistantMessage(response);
-                    this.addMessage('voice', assistantMessage);
+                    this.addVoiceMessage(data.userId, assistantMessage);
 
                     // Convert response to speech and play it
                     console.log('Converting response to speech...');
@@ -118,20 +119,23 @@ Assistant: kevin is a menace to be around.`;
         };
     }
 
-    initHistory(id, guildId = null) {
-        this.textHistory.set(id, [this.getSystemMessage(guildId)]);
+    initTextHistory(channelId, guildId = null) {
+        this.textHistory.set(channelId, [this.getSystemMessage(guildId, false)]);
     }
 
     initVoiceHistory() {
-        this.textHistory.set('voice', [this.getSystemMessage(null, true)]);
+        if (this.voiceHandler) {
+            const systemMessage = this.getSystemMessage(null, true);
+            this.voiceHistory.set('default', [systemMessage]);
+        }
     }
 
-    addMessage(id, message) {
-        if (!this.textHistory.has(id)) {
-            this.initHistory(id);
+    addTextMessage(channelId, message) {
+        if (!this.textHistory.has(channelId)) {
+            this.initTextHistory(channelId);
         }
 
-        const history = this.textHistory.get(id);
+        const history = this.textHistory.get(channelId);
         history.push(message);
 
         // Trim history if too long (keeping system message)
@@ -140,19 +144,51 @@ Assistant: kevin is a menace to be around.`;
                 history[0], // Keep system message
                 ...history.slice(-(this.maxHistory - 1)) // Keep last N-1 messages
             ];
-            this.textHistory.set(id, newHistory);
+            this.textHistory.set(channelId, newHistory);
         }
     }
 
-    getHistory(id) {
-        if (!this.textHistory.has(id)) {
-            this.initHistory(id);
+    addVoiceMessage(userId, message) {
+        const voiceId = userId || 'default';
+        if (!this.voiceHistory.has(voiceId)) {
+            this.voiceHistory.set(voiceId, [this.getSystemMessage(null, true)]);
         }
-        return this.textHistory.get(id);
+
+        const history = this.voiceHistory.get(voiceId);
+        history.push(message);
+
+        // Trim history if too long (keeping system message)
+        if (history.length > this.maxHistory + 1) {
+            const newHistory = [
+                history[0], // Keep system message
+                ...history.slice(-(this.maxHistory - 1)) // Keep last N-1 messages
+            ];
+            this.voiceHistory.set(voiceId, newHistory);
+        }
     }
 
-    clearHistory(id, guildId = null) {
-        this.initHistory(id, guildId);
+    getTextHistory(channelId) {
+        if (!this.textHistory.has(channelId)) {
+            this.initTextHistory(channelId);
+        }
+        return this.textHistory.get(channelId);
+    }
+
+    getVoiceHistory(userId) {
+        const voiceId = userId || 'default';
+        if (!this.voiceHistory.has(voiceId)) {
+            this.voiceHistory.set(voiceId, [this.getSystemMessage(null, true)]);
+        }
+        return this.voiceHistory.get(voiceId);
+    }
+
+    clearTextHistory(channelId, guildId = null) {
+        this.initTextHistory(channelId, guildId);
+    }
+
+    clearVoiceHistory(userId) {
+        const voiceId = userId || 'default';
+        this.voiceHistory.set(voiceId, [this.getSystemMessage(null, true)]);
     }
 
     formatUserMessage(userId, content) {
@@ -180,4 +216,5 @@ Assistant: kevin is a menace to be around.`;
     }
 }
 
+module.exports = ConversationHandler; 
 module.exports = ConversationHandler; 
