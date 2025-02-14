@@ -193,9 +193,6 @@ client.on(Events.MessageCreate, async message => {
                 console.error('Error processing message:', error);
                 await message.reply(`Sorry <@${message.author.id}>, I encountered an error: ${error.message}`);
             }
-        } else if (!isDM) {
-            // If not generating a response and not in DM, just add the message to text history
-            client.conversationHandler.addTextMessage(message.channel.id, newMessage, message.guild.id);
         }
     } catch (error) {
         console.error('Error in message event handler:', error);
