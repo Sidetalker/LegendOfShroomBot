@@ -85,7 +85,8 @@ Assistant: <@456> is a menace to be around.`;
         this.serverSystemPrompts = new Map([
             ['1231430176349487204', this.defaultSystemPrompt],
             ['616266785817100289', this.defaultSystemPrompt],
-            ['1138661873093464094', this.snailSystemPrompt]
+            ['1138661873093464094', this.snailSystemPrompt],
+            ['1141596941038407710', this.snailSystemPrompt]
         ]);
 
         this.deepseek = new DeepseekChat();
