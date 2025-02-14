@@ -62,7 +62,7 @@ client.once(Events.ClientReady, () => {
 });
 
 // Generate AI response for text chat
-async function generateTextResponse(channelId, newMessage, isDM = false, userId = null, guildId = null) {
+async function generateTextResponse(channelId, isDM = false, userId = null, guildId = null) {
     console.log(`\n=== Generating ${isDM ? 'DM' : 'text'} response for ${isDM ? `user ${userId}` : `channel ${channelId}`} ===`);
     
     // Get conversation history
@@ -73,8 +73,7 @@ async function generateTextResponse(channelId, newMessage, isDM = false, userId 
     // Keep system message plus last N messages
     const messages = [
         history[0], // System message
-        ...history.slice(Math.max(1, history.length - client.conversationHandler.maxHistory + 1)),
-        newMessage
+        ...history.slice(Math.max(1, history.length - client.conversationHandler.maxHistory + 1))
     ];
     
     // Log the context window
@@ -97,7 +96,7 @@ async function generateTextResponse(channelId, newMessage, isDM = false, userId 
             messages: messages,
             max_tokens: 1000,
             temperature: 0.7,
-            user: newMessage.name
+            user: messages[messages.length - 1].name
         });
         
         const responseText = response.choices[0].message.content;
@@ -169,7 +168,6 @@ client.on(Events.MessageCreate, async message => {
                 // Generate and get the response
                 const responseText = await generateTextResponse(
                     message.channel.id,
-                    newMessage,
                     isDM,
                     isDM ? message.author.id : null,
                     isDM ? null : message.guild.id
