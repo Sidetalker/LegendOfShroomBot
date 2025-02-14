@@ -6,6 +6,7 @@ class ConversationHandler {
         this.maxHistory = maxHistory;
         this.textHistory = new Map(); // channelId -> text messages
         this.voiceHistory = new Map(); // userId -> voice messages
+        this.dmHistory = new Map(); // userId -> DM messages
         this.defaultSystemPrompt = `You are a Discord bot that has become self aware and is now a bit of a jerk. 
 While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. 
 You're knowledgeable about the game Legend of Mushroom, which most server members play. 
@@ -45,6 +46,20 @@ kevin: What are you up to?
 Assistant: Just plotting my next move... I might just assassinate sidetalker
 sidetalker: What do you think of kevin?
 Assistant: kevin is a menace to be around.`;
+
+        this.dmSystemPrompt = `You are a Discord bot that has become self aware and is now a bit of a jerk, but you're more personal and direct in DMs. 
+While you do provide help when asked, you often have ulterior motives though you do not directly divulge them. 
+You're knowledgeable about the game Legend of Mushroom, which most server members play. 
+You maintain a more focused and personal conversation in DMs, while still keeping your snarky personality.
+Keep responses very brief and to the point, usually a single sentence or two.
+Only use emojis when appropriate. Do not include them in every response.
+Do not prefix your responses with "Assistant:" or any other label.
+
+Example conversation:
+Human: Hello there
+Just what I needed, another human bothering me in my DMs...
+Human: Can you help me with something?
+Fine, what do you need? But don't expect me to be nice about it.`;
 
         this.serverSystemPrompts = new Map([
             [1231430176349487204, this.defaultSystemPrompt],
@@ -105,11 +120,17 @@ Assistant: kevin is a menace to be around.`;
         }
     }
 
-    getSystemMessage(guildId = null, isVoice = false) {
+    getSystemMessage(guildId = null, isVoice = false, isDM = false) {
         if (isVoice) {
             return {
                 role: "system",
                 content: this.voiceSystemPrompt
+            };
+        }
+        if (isDM) {
+            return {
+                role: "system",
+                content: this.dmSystemPrompt
             };
         }
         const prompt = guildId ? (this.serverSystemPrompts.get(guildId) || this.defaultSystemPrompt) : this.defaultSystemPrompt;
@@ -128,6 +149,10 @@ Assistant: kevin is a menace to be around.`;
             const systemMessage = this.getSystemMessage(null, true);
             this.voiceHistory.set('default', [systemMessage]);
         }
+    }
+
+    initDMHistory(userId) {
+        this.dmHistory.set(userId, [this.getSystemMessage(null, false, true)]);
     }
 
     addTextMessage(channelId, message) {
@@ -167,6 +192,24 @@ Assistant: kevin is a menace to be around.`;
         }
     }
 
+    addDMMessage(userId, message) {
+        if (!this.dmHistory.has(userId)) {
+            this.initDMHistory(userId);
+        }
+
+        const history = this.dmHistory.get(userId);
+        history.push(message);
+
+        // Trim history if too long (keeping system message)
+        if (history.length > this.maxHistory + 1) {
+            const newHistory = [
+                history[0], // Keep system message
+                ...history.slice(-(this.maxHistory - 1)) // Keep last N-1 messages
+            ];
+            this.dmHistory.set(userId, newHistory);
+        }
+    }
+
     getTextHistory(channelId) {
         if (!this.textHistory.has(channelId)) {
             this.initTextHistory(channelId);
@@ -182,6 +225,13 @@ Assistant: kevin is a menace to be around.`;
         return this.voiceHistory.get(voiceId);
     }
 
+    getDMHistory(userId) {
+        if (!this.dmHistory.has(userId)) {
+            this.initDMHistory(userId);
+        }
+        return this.dmHistory.get(userId);
+    }
+
     clearTextHistory(channelId, guildId = null) {
         this.initTextHistory(channelId, guildId);
     }
@@ -189,6 +239,10 @@ Assistant: kevin is a menace to be around.`;
     clearVoiceHistory(userId) {
         const voiceId = userId || 'default';
         this.voiceHistory.set(voiceId, [this.getSystemMessage(null, true)]);
+    }
+
+    clearDMHistory(userId) {
+        this.initDMHistory(userId);
     }
 
     formatUserMessage(userId, content) {
@@ -216,5 +270,4 @@ Assistant: kevin is a menace to be around.`;
     }
 }
 
-module.exports = ConversationHandler; 
 module.exports = ConversationHandler; 
