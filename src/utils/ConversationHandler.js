@@ -83,9 +83,9 @@ User <@123>: What do you think of <@456>?
 Assistant: <@456> is a menace to be around.`;
 
         this.serverSystemPrompts = new Map([
-            [1231430176349487204, this.defaultSystemPrompt],
-            [616266785817100289, this.defaultSystemPrompt],
-            [1138661873093464094, this.snailSystemPrompt]
+            ['1231430176349487204', this.defaultSystemPrompt],
+            ['616266785817100289', this.defaultSystemPrompt],
+            ['1138661873093464094', this.snailSystemPrompt]
         ]);
 
         this.deepseek = new DeepseekChat();
@@ -143,6 +143,7 @@ Assistant: <@456> is a menace to be around.`;
     }
 
     getSystemMessage(guildId = null, isVoice = false, isDM = false) {
+        console.log('Getting system message:', { guildId, isVoice, isDM });
         if (isVoice) {
             return {
                 role: "system",
@@ -155,7 +156,9 @@ Assistant: <@456> is a menace to be around.`;
                 content: this.dmSystemPrompt
             };
         }
-        const prompt = guildId ? (this.serverSystemPrompts.get(guildId) || this.defaultSystemPrompt) : this.defaultSystemPrompt;
+        console.log('Server system prompts map:', Object.fromEntries(this.serverSystemPrompts));
+        const prompt = guildId ? (this.serverSystemPrompts.get(guildId.toString()) || this.defaultSystemPrompt) : this.defaultSystemPrompt;
+        console.log('Selected prompt contains:', prompt.substring(0, 100) + '...');
         return {
             role: "system",
             content: prompt
@@ -177,12 +180,16 @@ Assistant: <@456> is a menace to be around.`;
         this.dmHistory.set(userId, [this.getSystemMessage(null, false, true)]);
     }
 
-    addTextMessage(channelId, message) {
+    addTextMessage(channelId, message, guildId = null) {
         if (!this.textHistory.has(channelId)) {
-            this.initTextHistory(channelId);
+            this.initTextHistory(channelId, guildId);
         }
 
         const history = this.textHistory.get(channelId);
+        // Update system message if guild ID changed
+        if (guildId && history[0].content !== this.getSystemMessage(guildId).content) {
+            history[0] = this.getSystemMessage(guildId);
+        }
         history.push(message);
 
         // Trim history if too long (keeping system message)
@@ -232,9 +239,25 @@ Assistant: <@456> is a menace to be around.`;
         }
     }
 
-    getTextHistory(channelId) {
+    getTextHistory(channelId, guildId = null) {
+        console.log('Getting text history:', { channelId, guildId });
         if (!this.textHistory.has(channelId)) {
-            this.initTextHistory(channelId);
+            console.log('Initializing new text history');
+            this.initTextHistory(channelId, guildId);
+        } else if (guildId) {
+            // Update system message if guild ID changed
+            const history = this.textHistory.get(channelId);
+            const currentSystemMessage = history[0].content;
+            const newSystemMessage = this.getSystemMessage(guildId).content;
+            console.log('Comparing system messages:', {
+                currentPrompt: currentSystemMessage.substring(0, 100) + '...',
+                newPrompt: newSystemMessage.substring(0, 100) + '...',
+                areEqual: currentSystemMessage === newSystemMessage
+            });
+            if (currentSystemMessage !== newSystemMessage) {
+                console.log('Updating system message for different guild');
+                history[0] = this.getSystemMessage(guildId);
+            }
         }
         return this.textHistory.get(channelId);
     }

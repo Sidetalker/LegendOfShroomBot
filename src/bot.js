@@ -62,13 +62,13 @@ client.once(Events.ClientReady, () => {
 });
 
 // Generate AI response for text chat
-async function generateTextResponse(channelId, newMessage, isDM = false, userId = null) {
+async function generateTextResponse(channelId, newMessage, isDM = false, userId = null, guildId = null) {
     console.log(`\n=== Generating ${isDM ? 'DM' : 'text'} response for ${isDM ? `user ${userId}` : `channel ${channelId}`} ===`);
     
     // Get conversation history
     const history = isDM 
         ? client.conversationHandler.getDMHistory(userId)
-        : client.conversationHandler.getTextHistory(channelId);
+        : client.conversationHandler.getTextHistory(channelId, guildId);
     
     // Keep system message plus last N messages
     const messages = [
@@ -163,7 +163,7 @@ client.on(Events.MessageCreate, async message => {
                 if (isDM) {
                     client.conversationHandler.addDMMessage(message.author.id, newMessage);
                 } else {
-                    client.conversationHandler.addTextMessage(message.channel.id, newMessage);
+                    client.conversationHandler.addTextMessage(message.channel.id, newMessage, message.guild.id);
                 }
                 
                 // Generate and get the response
@@ -171,7 +171,8 @@ client.on(Events.MessageCreate, async message => {
                     message.channel.id,
                     newMessage,
                     isDM,
-                    isDM ? message.author.id : null
+                    isDM ? message.author.id : null,
+                    isDM ? null : message.guild.id
                 );
                 
                 // Add bot's response to appropriate history
@@ -179,7 +180,7 @@ client.on(Events.MessageCreate, async message => {
                 if (isDM) {
                     client.conversationHandler.addDMMessage(message.author.id, assistantMessage);
                 } else {
-                    client.conversationHandler.addTextMessage(message.channel.id, assistantMessage);
+                    client.conversationHandler.addTextMessage(message.channel.id, assistantMessage, message.guild.id);
                 }
                 
                 // Split and send response if too long
@@ -194,7 +195,7 @@ client.on(Events.MessageCreate, async message => {
             }
         } else if (!isDM) {
             // If not generating a response and not in DM, just add the message to text history
-            client.conversationHandler.addTextMessage(message.channel.id, newMessage);
+            client.conversationHandler.addTextMessage(message.channel.id, newMessage, message.guild.id);
         }
     } catch (error) {
         console.error('Error in message event handler:', error);
