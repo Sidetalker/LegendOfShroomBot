@@ -150,7 +150,7 @@ class VoiceHandler extends EventEmitter {
             const audioStream = receiver.subscribe(userId, {
                 end: {
                     behavior: EndBehaviorType.AfterSilence,
-                    duration: 100
+                    duration: 500  // Increased silence duration to 500ms to capture more audio
                 }
             });
 
@@ -160,6 +160,7 @@ class VoiceHandler extends EventEmitter {
             // Track stream state
             let streamEnded = false;
             let streamError = null;
+            let startTime = Date.now();
 
             // Track total bytes received
             let totalBytes = 0;
@@ -178,7 +179,9 @@ class VoiceHandler extends EventEmitter {
 
             audioStream.on('end', async () => {
                 streamEnded = true;
+                const duration = Date.now() - startTime;
                 console.log(`Total audio data received from ${user.tag}: ${totalBytes} bytes`);
+                console.log(`Audio duration: ${duration}ms`);
                 console.log(`Audio stream ended for ${user.tag}`);
                 
                 try {
@@ -187,6 +190,8 @@ class VoiceHandler extends EventEmitter {
                     const text = await this.speechRecognizer.stopRecording(userId);
                     if (text && text.trim()) {
                         console.log(`Transcribed text from ${user.tag}: "${text}"`);
+                    } else {
+                        console.log(`No transcription available for ${user.tag} (possibly too short or no speech detected)`);
                     }
                 } catch (error) {
                     console.error(`Error stopping recording for ${user.tag}:`, error);

@@ -27,7 +27,10 @@ class SpeechRecognizer extends EventEmitter {
         }
 
         // Keep track of active recordings
-        this.activeRecordings = new Map(); // userId -> { writeStream, filePath, decoder, inputStream }
+        this.activeRecordings = new Map(); // userId -> { writeStream, filePath, decoder, inputStream, bufferSize }
+        
+        // Minimum number of samples required by Leopard
+        this.MIN_SAMPLES = 512;
     }
 
     startRecording(userId) {
@@ -52,14 +55,14 @@ class SpeechRecognizer extends EventEmitter {
 
         writeStream.write(header);
 
-        // Create Opus decoder
+        // Create Opus decoder with larger frame size
         const decoder = new prism.opus.Decoder({
             frameSize: 960,
             channels: 1,
             rate: 16000
         });
 
-        // Create input stream for audio chunks
+        // Create input stream for audio chunks with buffering
         const inputStream = new Transform({
             transform(chunk, encoding, callback) {
                 callback(null, chunk);
@@ -76,7 +79,8 @@ class SpeechRecognizer extends EventEmitter {
             filePath,
             decoder,
             inputStream,
-            startTime: Date.now()
+            startTime: Date.now(),
+            bufferSize: 0
         });
 
         console.log(`Started recording for user ${userId}`);
@@ -90,6 +94,7 @@ class SpeechRecognizer extends EventEmitter {
         }
 
         try {
+            recording.bufferSize += chunk.length / 2; // Divide by 2 because we're using 16-bit samples
             recording.inputStream.write(chunk);
         } catch (error) {
             console.error(`Error processing audio chunk for user ${userId}:`, error);
@@ -108,6 +113,14 @@ class SpeechRecognizer extends EventEmitter {
             recording.inputStream.end();
             await new Promise(resolve => recording.writeStream.on('finish', resolve));
 
+            // Check if we have enough samples
+            if (recording.bufferSize < this.MIN_SAMPLES) {
+                console.log(`Not enough samples for processing (got ${recording.bufferSize}, need ${this.MIN_SAMPLES})`);
+                fs.unlinkSync(recording.filePath);
+                this.activeRecordings.delete(userId);
+                return null;
+            }
+
             // Update WAV header with final file size
             const stats = fs.statSync(recording.filePath);
             const fd = fs.openSync(recording.filePath, 'r+');
@@ -122,6 +135,7 @@ class SpeechRecognizer extends EventEmitter {
             // Process the audio file
             console.log(`Processing audio file for user ${userId}`);
             console.log(`Audio file size: ${stats.size} bytes`);
+            console.log(`Total samples: ${recording.bufferSize}`);
             
             if (stats.size <= 44) { // 44 is the WAV header size
                 console.log('Audio file contains no audio data beyond WAV header');
