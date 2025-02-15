@@ -157,28 +157,57 @@ class VoiceHandler extends EventEmitter {
             // Create transform stream for speech recognition
             const recognizerStream = this.speechRecognizer.createTransformStream(userId);
 
+            // Track stream state
+            let streamEnded = false;
+            let streamError = null;
+
             // Track total bytes received
             let totalBytes = 0;
+
             audioStream.on('data', (chunk) => {
-                totalBytes += chunk.length;
+                if (!streamEnded && !streamError) {
+                    totalBytes += chunk.length;
+                    try {
+                        recognizerStream.write(chunk);
+                    } catch (error) {
+                        console.error(`Error writing to recognizer stream for ${user.tag}:`, error);
+                        streamError = error;
+                    }
+                }
             });
 
-            // Pipe audio through speech recognition
-            audioStream.pipe(recognizerStream);
-
             audioStream.on('end', async () => {
+                streamEnded = true;
                 console.log(`Total audio data received from ${user.tag}: ${totalBytes} bytes`);
                 console.log(`Audio stream ended for ${user.tag}`);
                 
-                // Get speech recognition result
-                const text = await this.speechRecognizer.stopRecording(userId);
-                if (text && text.trim()) {
-                    console.log(`Transcribed text from ${user.tag}: "${text}"`);
+                try {
+                    recognizerStream.end();
+                    // Get speech recognition result
+                    const text = await this.speechRecognizer.stopRecording(userId);
+                    if (text && text.trim()) {
+                        console.log(`Transcribed text from ${user.tag}: "${text}"`);
+                    }
+                } catch (error) {
+                    console.error(`Error stopping recording for ${user.tag}:`, error);
                 }
             });
 
             audioStream.on('error', (error) => {
+                streamError = error;
                 console.error(`Error in audio stream for ${user.tag}:`, error);
+                try {
+                    recognizerStream.end();
+                    this.speechRecognizer.stopRecording(userId).catch(err => {
+                        console.error(`Error stopping recording after stream error for ${user.tag}:`, err);
+                    });
+                } catch (err) {
+                    console.error(`Error cleaning up after stream error for ${user.tag}:`, err);
+                }
+            });
+
+            recognizerStream.on('error', (error) => {
+                console.error(`Error in recognizer stream for ${user.tag}:`, error);
             });
         }
     }
